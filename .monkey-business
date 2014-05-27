@@ -1,0 +1,131 @@
+#!/bin/bash
+
+# Monkey Business
+# The bash git prompt that went bananas
+
+# Inspired by https://github.com/jennschiffer/dotfiles
+
+# Lets start with the monkey business
+
+monkey_ongit="🐒"
+monkey_uncommitted="🐵 "
+monkey_unstaged="🙉 "
+monkey_untracked="🙈 "
+monkey_stashed="🙊 "
+
+# Base styles and color palette
+BOLD=$(tput bold)
+RESET=$(tput sgr0)
+# Uses subset of Aethusa Colors
+# https://github.com/afj176/aethusa-cheatsheet
+# https://github.com/afj176/Aethusa-vim
+Ae_DRKGREEN=$(tput setaf 30)
+Ae_DRKGREY=$(tput setaf 59)
+Ae_BLUE=$(tput setaf 67)
+Ae_RED=$(tput setaf 88)
+Ae_LHTGREEN=$(tput setaf 113)
+Ae_TURQUOISE=$(tput setaf 123)
+Ae_TAN=$(tput setaf 144)
+Ae_ORNG=$(tput setaf 179)
+Ae_ORNGRED=$(tput setaf 210)
+Ae_YLWORNG=$(tput setaf 222)
+Ae_YELLOW=$(tput setaf 228)
+Ae_WHITE=$(tput setaf 231)
+
+host="\[${RESET}${Ae_LHTGREEN}\]"
+user="\[${RESET}${Ae_DRKGREEN}\]"
+
+if [[ "$SSH_TTY" ]]; then
+    # connected via ssh
+    host="\[${BOLD}${Ae_RED}\]"
+elif [[ "$USER" == "root" ]]; then
+    # logged in as root
+    user="\[${BOLD}${Ae_RED}\]"
+fi
+
+host+="[\h]"
+user+="[\u]"
+
+path="\[${RESET}${Ae_ORNGRED}\]\w"
+
+branch="${Aethusa_ORANGE}"
+money="\[${RESET}${Ae_LHTGREEN}\]\$"
+
+count_jobs(){
+  local j
+  JobsCount=$(jobs -p | wc -l | tr -d ' ')
+  j="${Ae_RED}[${JobsCount}]"
+  case $JobsCount in
+    0 ) j="${Ae_DRKGREY}[0]" ;;
+    1 ) j="${Ae_YELLOW}[${JobsCount}]" ;;
+    2 ) j="${Ae_YLWORNG}[${JobsCount}]" ;;
+    3 ) j="${Ae_ORNG}[${JobsCount}]" ;;
+    4 ) j="${Ae_ORNGRED}[${JobsCount}]" ;;
+  esac
+  printf "${j}"
+}
+
+jobz="\$(count_jobs)"
+
+is_git_repo() {
+    $(git rev-parse --is-inside-work-tree &> /dev/null)
+}
+
+is_git_dir() {
+    $(git rev-parse --is-inside-git-dir 2> /dev/null)
+}
+
+get_git_branch() {
+    local branch_name
+    # Get the short symbolic ref
+    # If HEAD isn't a symbolic ref, get the short SHA
+    # Otherwise, just give up    
+    branch_name=$(git symbolic-ref --quiet --short HEAD 2> /dev/null) || 
+    $(git rev-parse --short HEAD 2> /dev/null) || 
+    "(unknown)"
+    printf $branch_name
+}
+
+# Git status information
+prompt_git() {
+    local git_info monkey_business
+    
+    if ! is_git_repo || is_git_dir; then return 1; fi
+    
+    git_info=$(get_git_branch)
+
+    # You know you’re on `gh-pages`, right? *Right*?
+    if [[ $git_info == "gh-pages" ]]; then branch="${Ae_BLUE}"; fi
+
+    # Don’t screw up `stable`.
+    if [[ $git_info == *stable* ]]; then branch="${Ae_RED}"; fi
+
+    # Check for uncommitted changes in the index
+    if ! $(git diff --quiet --ignore-submodules --cached); then monkey_business+=$monkey_uncommitted; fi
+
+    # Check for unstaged changes
+    if ! $(git diff-files --quiet --ignore-submodules --); then monkey_business+=$monkey_unstaged; fi
+
+    # Check for untracked files
+    if [ -n "$(git ls-files --others --exclude-standard)" ]; then monkey_business+=$monkey_untracked; fi
+
+    # Check for stashed files
+    if $(git rev-parse --verify refs/stash &>/dev/null); then monkey_business+=$monkey_stashed; fi
+
+    if [ -z "$monkey_business" ]; then 
+        branch="${Ae_LHTGREEN}"
+        monkey_business=$monkey_ongit
+    fi
+
+    printf " ${Ae_TAN}on ${branch}${git_info}${Ae_TURQUOISE} $monkey_business"
+}
+
+who="\n"$host$user
+repo="\$(prompt_git)"
+
+Prompt=$who$jobz"\n"$path$repo"\n"$money" \[${RESET}\]"
+
+export PS1=$Prompt
+export SUDO_PS1=$Prompt
+
+
